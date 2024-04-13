@@ -1,0 +1,194 @@
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <style>
+        .container {
+            display: flex;
+            position: relative;
+            justify-content: center;
+            align-items: center;
+            flex-direction: row;
+            gap: 1%;
+            height: 100vh;
+            width: 100%;
+            user-select: none;
+        }
+        .container2 {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: row;
+            gap: 1%;
+            user-select: none;
+        }
+        .box {
+            background-color: white;
+            width: 25vw;
+            height: auto;
+            border: 1px solid #dddddd;
+        }
+        .box-title {
+            position: relative;
+            text-align: center;
+            bottom: 5%;
+            font-size: 1.4vw;
+            font-family: Arial;
+        }
+        .box-desc {
+            position: relative;
+            text-align: center;
+            bottom: 5%;
+            font-size: 1.1vw;
+            font-family: Arial;
+        }
+        .page-title {
+            font-family: monospace;
+            font-size: 1.1vw;
+        }
+    </style>
+</head>
+<body>
+<div class="container2">
+    <div class="page-title">
+        <h1>...</h1>
+    </div>
+</div>
+<div class="container">
+    <div class="box">
+        <h1 class="box-title">Temp Data</h1>
+        <h1 class="box-desc" id="temp">N/A</h1>
+        <h1 class="box-desc" id="info">Info: N/A</h1>
+    </div>
+    <div class="box">
+        <h1 class="box-title">Hum Data</h1>
+        <h1 class="box-desc" id="hum">N/A</h1>
+        <h1 class="box-desc" id="infoh">Info: N/A</h1>
+    </div>
+</div>
+<script defer>
+    class Classifier {
+        classifyt(temp) {
+            let tempWarning = "None"
+            if (typeof temp == "number") {
+                if (temp > 30) {
+                    tempWarning = "Warning: High temperature detected!"
+                }
+                else if (temp < 10) {
+                    tempWarning = "Warning: Low temperature detected!"
+                } else {
+                    tempWarning = "Results within expected ranges."
+                }
+                return tempWarning
+            }
+        }
+        classifyh(hum) {
+            let humWarning = "None"
+            if (typeof hum == "number") {
+                if (hum >= 70) {
+                    humWarning = "Warning: High humidity detected!"
+                } else if (hum < 30) {
+                    humWarning = "Warning: Low humidity detected!"
+                } else {
+                    humWarning = "Results within expected ranges."
+                }
+                return humWarning
+            }
+        }
+    }
+    class Client {
+        wsClient = undefined
+        ping_pong_sequence() {
+            if (this.wsClient !== undefined) {
+                setInterval(() => {
+                    this.wsClient.send(JSON.stringify({
+                        type: "PING"
+                    }))
+                }, 5000)
+            }
+        }
+        connect() {
+           try {
+               this.wsClient = new WebSocket("wss://api.meow.lol/", "wss")
+               this.wsClient.onopen = (ws) => {
+                   console.log("[WS]: EMIT", ws?.type)
+                   this.listen()
+                   this.ping_pong_sequence()
+                   return "OK"
+               }
+               return "OK"
+           } catch (e) {
+               console.error(e)
+               return e.message
+           }
+        }
+        indicate() {
+            const pageTitle = document.querySelector(".container2 .page-title h1") //BEST CODING FR
+            let ok = 0
+            setInterval(() => {
+                if (ok >= 1) {
+                    ok = 0
+                } else {
+                    ok += 0.05
+                    pageTitle.style.opacity = ok
+                }
+            }, 100)
+        }
+        listen() {
+            const classifier = new Classifier();
+            this.wsClient.onmessage = (msg) => {
+                const message = msg?.data
+                let jsonData;
+                try {
+                    jsonData = JSON.parse(message)
+                } catch (e) {
+                    alert("Error while JSON parse.")
+                    throw Error(e) //halt thread
+                }
+                if (jsonData["type"]) {
+                    switch (jsonData["type"]) {
+                        case "REQUEST_DATA": { //Jump immediately to this case no label
+                            console.log("[WS]: Server is requesting ESP32 to send out data")
+                            break
+                        }
+                        case "RECEIVE_DATA": { //Jump immediately to this case no label
+                            console.log("[WS]: ESP32 is sending back data")
+
+                            document.querySelector(".container .box #temp").textContent = `${jsonData["data"]["temperature"]}°C`
+                            document.querySelector(".container .box #info").textContent = `Info: ${classifier.classifyt(jsonData["data"]["temperature"])}`
+
+                            document.querySelector(".container .box #hum").textContent = `${jsonData["data"]["humidity"]}%`
+                            document.querySelector(".container .box #infoh").textContent = `Info: ${classifier.classifyh(jsonData["data"]["humidity"])}`
+                            break
+                        }
+                        case "PONG": { //Jump immediately to this case no label
+                            console.log(`[WS]: Ping received`)
+                            break
+                        }
+                    }
+                }
+
+            }
+        }
+    }
+    document.addEventListener("DOMContentLoaded", async () => {
+        const pageTitle = document.querySelector(".container2 .page-title h1")
+        pageTitle.textContent = "Initializing"
+        const ws = new Client();
+        const result = ws.connect();
+        console.log(result);
+        if (result.includes("OK")) {
+            console.log("[CLIENT]: IS_OK");
+            pageTitle.textContent = "READING...";
+            ws.indicate();
+        } else {
+            pageTitle.textContent = "Error occurred";
+        }
+    })
+</script>
+<script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+</body>
+</html>
